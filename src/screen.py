@@ -74,9 +74,12 @@ def screen_all(
     rescreen: bool = False,
     on_progress=None,
 ) -> tuple[int, int]:
-    """Screen unscreened (or all, if rescreen=True) papers against the given criteria file.
+    """Screen unscreened (or all, if rescreen=True) works against the given criteria file.
 
-    Results are tracked per (paper, criteria_file), so screening with a different
+    Duplicate papers (linked to the same work via `paper_works`) are screened
+    once, using one representative record per work (`unique_papers`).
+
+    Results are tracked per (work, criteria_file), so screening with a different
     criteria file never overwrites or deletes results recorded under another one.
     Rescreening only updates rows already recorded under this criteria_file.
     """
@@ -85,15 +88,15 @@ def screen_all(
 
     if rescreen:
         query = """
-            SELECT p.* FROM papers p
-            JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
+            SELECT p.* FROM unique_papers p
+            JOIN screening_results s ON s.work_id = p.work_id AND s.criteria_file = ?
         """
         params: tuple = (criteria_path,)
     else:
         query = """
-            SELECT p.* FROM papers p
-            LEFT JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
-            WHERE s.paper_id IS NULL OR s.error IS NOT NULL
+            SELECT p.* FROM unique_papers p
+            LEFT JOIN screening_results s ON s.work_id = p.work_id AND s.criteria_file = ?
+            WHERE s.work_id IS NULL OR s.error IS NOT NULL
         """
         params = (criteria_path,)
     if limit:
@@ -143,14 +146,14 @@ def screen_all(
             conn.execute(
                 """
                 INSERT INTO screening_results
-                    (paper_id, criteria_file, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
+                    (work_id, criteria_file, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
                 VALUES (?, ?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)
-                ON CONFLICT(paper_id, criteria_file) DO UPDATE SET
+                ON CONFLICT(work_id, criteria_file) DO UPDATE SET
                     error=excluded.error,
                     model=excluded.model,
                     screened_at=excluded.screened_at
                 """,
-                (paper["id"], criteria_path, model, str(exc), now),
+                (paper["work_id"], criteria_path, model, str(exc), now),
             )
             failed += 1
         else:
@@ -158,10 +161,10 @@ def screen_all(
             conn.execute(
                 """
                 INSERT INTO screening_results
-                    (paper_id, criteria_file, relevant, confidence, reason, themes,
+                    (work_id, criteria_file, relevant, confidence, reason, themes,
                      peer_reviewed, language, study_type, model, raw_response, error, screened_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT(paper_id, criteria_file) DO UPDATE SET
+                ON CONFLICT(work_id, criteria_file) DO UPDATE SET
                     relevant=excluded.relevant,
                     confidence=excluded.confidence,
                     reason=excluded.reason,
@@ -175,7 +178,7 @@ def screen_all(
                     screened_at=excluded.screened_at
                 """,
                 (
-                    paper["id"],
+                    paper["work_id"],
                     criteria_path,
                     1 if result.get("relevant") else 0,
                     result.get("confidence"),

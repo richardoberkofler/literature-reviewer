@@ -18,8 +18,8 @@ def export_csv(db_path: str, out_path: str, criteria_path: str, relevant_only: b
     query = """
         SELECT p.*, s.relevant, s.confidence, s.reason, s.themes,
                s.peer_reviewed, s.language, s.study_type, s.error
-        FROM papers p
-        LEFT JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
+        FROM unique_papers p
+        LEFT JOIN screening_results s ON s.work_id = p.work_id AND s.criteria_file = ?
     """
     params: list = [criteria_path]
     if relevant_only:

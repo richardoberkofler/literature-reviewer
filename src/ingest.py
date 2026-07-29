@@ -25,10 +25,35 @@ def _int_or_none(value) -> int | None:
         return None
 
 
-def _upsert_paper(conn, row: dict, source: str, source_file: str, now: str) -> bool:
+def _find_or_create_work(
+    conn, doi_to_work: dict, key_to_work: dict, doi: str | None, title: str | None, authors: str | None
+) -> int:
+    nd = db.normalize_doi(doi)
+    key = db.title_authors_key(title, authors)
+    work_id = None
+    if nd and nd in doi_to_work:
+        work_id = doi_to_work[nd]
+    elif key and key in key_to_work:
+        work_id = key_to_work[key]
+
+    if work_id is None:
+        cur = conn.execute("INSERT INTO works DEFAULT VALUES")
+        work_id = cur.lastrowid
+
+    if nd:
+        doi_to_work.setdefault(nd, work_id)
+    if key:
+        key_to_work.setdefault(key, work_id)
+    return work_id
+
+
+def _upsert_paper(
+    conn, row: dict, source: str, source_file: str, now: str, doi_to_work: dict, key_to_work: dict
+) -> bool:
     paper_id = str(row.get("id") or "").strip()
     if not paper_id:
         return False
+    is_new = conn.execute("SELECT 1 FROM papers WHERE id = ?", (paper_id,)).fetchone() is None
     conn.execute(
         """
         INSERT INTO papers (
@@ -67,6 +92,14 @@ def _upsert_paper(conn, row: dict, source: str, source_file: str, now: str) -> b
             now,
         ),
     )
+    if is_new:
+        work_id = _find_or_create_work(
+            conn, doi_to_work, key_to_work, row.get("doi"), row.get("title"), row.get("authors")
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO paper_works (paper_id, work_id) VALUES (?, ?)",
+            (paper_id, work_id),
+        )
     return True
 
 
@@ -148,10 +181,25 @@ def ingest(file_path: str, db_path: str) -> tuple[int, int]:
     now = datetime.now(timezone.utc).isoformat()
     source_file = Path(file_path).name
 
+    doi_to_work: dict[str, int] = {}
+    key_to_work: dict[str, int] = {}
+    for paper_doi, paper_title, paper_authors, work_id in conn.execute(
+        """
+        SELECT p.doi, p.title, p.authors, pw.work_id FROM papers p
+        JOIN paper_works pw ON pw.paper_id = p.id
+        """
+    ):
+        nd = db.normalize_doi(paper_doi)
+        key = db.title_authors_key(paper_title, paper_authors)
+        if nd:
+            doi_to_work.setdefault(nd, work_id)
+        if key:
+            key_to_work.setdefault(key, work_id)
+
     inserted = 0
     skipped = 0
     for row in rows:
-        if _upsert_paper(conn, row, source, source_file, now):
+        if _upsert_paper(conn, row, source, source_file, now, doi_to_work, key_to_work):
             inserted += 1
         else:
             skipped += 1

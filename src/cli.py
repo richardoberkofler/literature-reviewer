@@ -52,7 +52,8 @@ def cmd_screen(args):
 
 def cmd_status(args):
     conn = db.connect(args.db)
-    total = conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+    raw_total = conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
+    total = conn.execute("SELECT COUNT(*) FROM works").fetchone()[0]
     screened = conn.execute(
         "SELECT COUNT(*) FROM screening_results WHERE criteria_file = ? AND error IS NULL",
         (args.criteria,),
@@ -67,7 +68,7 @@ def cmd_status(args):
     ).fetchone()[0]
     conn.close()
     print(f"Criteria file:    {args.criteria}")
-    print(f"Papers ingested:  {total}")
+    print(f"Papers ingested:  {raw_total} ({total} unique, {raw_total - total} duplicates)")
     print(f"Screened (ok):    {screened}")
     print(f"  -> relevant:    {relevant}")
     print(f"  -> excluded:    {screened - relevant}")
