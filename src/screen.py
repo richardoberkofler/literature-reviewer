@@ -1,8 +1,10 @@
 """Screen ingested papers against criteria.yaml using a local Ollama model."""
 
 import json
+import threading
 from datetime import datetime, timezone
 
+import requests
 import yaml
 
 import db
@@ -91,8 +93,51 @@ def screen_all(
         prompt = build_prompt(paper, criteria)
         now = datetime.now(timezone.utc).isoformat()
 
+        # Run the model call on a worker thread so a Ctrl+C in the main
+        # thread can abort it immediately (by closing the session) instead
+        # of waiting for the request to time out or return on its own.
+        session = requests.Session()
+        outcome: dict = {}
+
+        def _call():
+            try:
+                outcome["result"] = generate_json(prompt, model=model, base_url=base_url, session=session)
+            except OllamaError as exc:
+                outcome["error"] = exc
+            except requests.exceptions.RequestException:
+                pass  # session was closed to cancel the request; nothing to report
+
+        worker = threading.Thread(target=_call, daemon=True)
+        worker.start()
         try:
-            result = generate_json(prompt, model=model, base_url=base_url)
+            while worker.is_alive():
+                worker.join(timeout=0.2)
+        except KeyboardInterrupt:
+            session.close()
+            worker.join(timeout=2)
+            conn.commit()
+            conn.close()
+            raise
+        finally:
+            session.close()
+
+        if "error" in outcome:
+            exc = outcome["error"]
+            conn.execute(
+                """
+                INSERT INTO screening_results
+                    (paper_id, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
+                VALUES (?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)
+                ON CONFLICT(paper_id) DO UPDATE SET
+                    error=excluded.error,
+                    model=excluded.model,
+                    screened_at=excluded.screened_at
+                """,
+                (paper["id"], model, str(exc), now),
+            )
+            failed += 1
+        else:
+            result = outcome["result"]
             conn.execute(
                 """
                 INSERT INTO screening_results
@@ -120,20 +165,6 @@ def screen_all(
                 ),
             )
             done += 1
-        except OllamaError as exc:
-            conn.execute(
-                """
-                INSERT INTO screening_results
-                    (paper_id, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
-                VALUES (?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)
-                ON CONFLICT(paper_id) DO UPDATE SET
-                    error=excluded.error,
-                    model=excluded.model,
-                    screened_at=excluded.screened_at
-                """,
-                (paper["id"], model, str(exc), now),
-            )
-            failed += 1
 
         conn.commit()
         if on_progress:

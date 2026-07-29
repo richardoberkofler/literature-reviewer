@@ -14,15 +14,21 @@ def generate_json(
     model: str,
     base_url: str = "http://localhost:11434",
     timeout: int = 120,
+    session: requests.Session | None = None,
 ) -> dict:
     """Send a prompt to Ollama and parse the response as JSON.
 
     Ollama is asked to constrain its output to JSON via `format: "json"`.
     Raises OllamaError if the server is unreachable or the response body
     isn't valid JSON.
+
+    If `session` is given, the request is issued through it (rather than the
+    module-level `requests` API) so a caller can abort an in-flight request
+    by closing the session from another thread.
     """
+    http = session if session is not None else requests
     try:
-        resp = requests.post(
+        resp = http.post(
             f"{base_url}/api/generate",
             json={
                 "model": model,

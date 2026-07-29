@@ -29,15 +29,20 @@ def cmd_screen(args):
     def on_progress(i, total, paper, failed):
         print(f"[{i}/{total}] {paper['title'][:80]!r}", file=sys.stderr)
 
-    done, failed = screen_mod.screen_all(
-        db_path=args.db,
-        criteria_path=args.criteria,
-        model=args.model,
-        base_url=args.base_url,
-        limit=args.limit,
-        rescreen=args.rescreen,
-        on_progress=on_progress,
-    )
+    try:
+        done, failed = screen_mod.screen_all(
+            db_path=args.db,
+            criteria_path=args.criteria,
+            model=args.model,
+            base_url=args.base_url,
+            limit=args.limit,
+            rescreen=args.rescreen,
+            on_progress=on_progress,
+        )
+    except KeyboardInterrupt:
+        print("\nScreening cancelled.", file=sys.stderr)
+        sys.exit(130)
+
     print(f"Screened {done} papers ({failed} failed) using model '{args.model}'.")
     if failed:
         print("Re-run `screen` (without --rescreen) later to retry failed papers.")
