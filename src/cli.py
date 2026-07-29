@@ -5,8 +5,9 @@ Usage:
     python src/cli.py screen [--db data/review.db] [--criteria criteria.yaml]
                               [--model qwen2.5:14b] [--base-url http://localhost:11434]
                               [--limit N] [--rescreen]
-    python src/cli.py status [--db data/review.db]
-    python src/cli.py export [--db data/review.db] [--out data/results.csv] [--relevant-only]
+    python src/cli.py status [--db data/review.db] [--criteria criteria.yaml]
+    python src/cli.py export [--db data/review.db] [--out data/results.csv]
+                              [--criteria criteria.yaml] [--relevant-only]
 """
 
 import argparse
@@ -52,15 +53,19 @@ def cmd_status(args):
     conn = db.connect(args.db)
     total = conn.execute("SELECT COUNT(*) FROM papers").fetchone()[0]
     screened = conn.execute(
-        "SELECT COUNT(*) FROM screening_results WHERE error IS NULL"
+        "SELECT COUNT(*) FROM screening_results WHERE criteria_file = ? AND error IS NULL",
+        (args.criteria,),
     ).fetchone()[0]
     relevant = conn.execute(
-        "SELECT COUNT(*) FROM screening_results WHERE relevant = 1"
+        "SELECT COUNT(*) FROM screening_results WHERE criteria_file = ? AND relevant = 1",
+        (args.criteria,),
     ).fetchone()[0]
     failed = conn.execute(
-        "SELECT COUNT(*) FROM screening_results WHERE error IS NOT NULL"
+        "SELECT COUNT(*) FROM screening_results WHERE criteria_file = ? AND error IS NOT NULL",
+        (args.criteria,),
     ).fetchone()[0]
     conn.close()
+    print(f"Criteria file:    {args.criteria}")
     print(f"Papers ingested:  {total}")
     print(f"Screened (ok):    {screened}")
     print(f"  -> relevant:    {relevant}")
@@ -70,7 +75,7 @@ def cmd_status(args):
 
 
 def cmd_export(args):
-    n = export_mod.export_csv(args.db, args.out, relevant_only=args.relevant_only)
+    n = export_mod.export_csv(args.db, args.out, args.criteria, relevant_only=args.relevant_only)
     print(f"Wrote {n} rows to {args.out}")
 
 
@@ -94,11 +99,13 @@ def main():
 
     p_status = sub.add_parser("status", help="Show ingest/screening progress")
     p_status.add_argument("--db", default=DEFAULT_DB)
+    p_status.add_argument("--criteria", default="criteria.yaml")
     p_status.set_defaults(func=cmd_status)
 
     p_export = sub.add_parser("export", help="Export results to CSV")
     p_export.add_argument("--db", default=DEFAULT_DB)
     p_export.add_argument("--out", default="data/results.csv")
+    p_export.add_argument("--criteria", default="criteria.yaml")
     p_export.add_argument("--relevant-only", action="store_true")
     p_export.set_defaults(func=cmd_export)
 

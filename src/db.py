@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS papers (
 );
 
 CREATE TABLE IF NOT EXISTS screening_results (
-    paper_id      TEXT PRIMARY KEY REFERENCES papers(id),
+    paper_id      TEXT NOT NULL REFERENCES papers(id),
+    criteria_file TEXT NOT NULL,
     relevant      INTEGER,
     confidence    REAL,
     reason        TEXT,
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS screening_results (
     model         TEXT,
     raw_response  TEXT,
     error         TEXT,
-    screened_at   TEXT NOT NULL
+    screened_at   TEXT NOT NULL,
+    PRIMARY KEY (paper_id, criteria_file)
 );
 """
 

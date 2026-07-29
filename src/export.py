@@ -11,18 +11,19 @@ COLUMNS = [
 ]
 
 
-def export_csv(db_path: str, out_path: str, relevant_only: bool = False) -> int:
+def export_csv(db_path: str, out_path: str, criteria_path: str, relevant_only: bool = False) -> int:
     conn = db.connect(db_path)
     query = """
         SELECT p.*, s.relevant, s.confidence, s.reason, s.themes, s.error
         FROM papers p
-        LEFT JOIN screening_results s ON s.paper_id = p.id
+        LEFT JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
     """
+    params: list = [criteria_path]
     if relevant_only:
         query += " WHERE s.relevant = 1"
     query += " ORDER BY s.relevant DESC, s.confidence DESC"
 
-    rows = conn.execute(query).fetchall()
+    rows = conn.execute(query, params).fetchall()
     with open(out_path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=COLUMNS, extrasaction="ignore")
         writer.writeheader()

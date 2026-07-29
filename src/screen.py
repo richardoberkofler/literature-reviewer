@@ -31,12 +31,12 @@ Author Keywords: {author_keywords}
 Index Keywords: {index_keywords}
 Abstract: {abstract}
 
-Respond with ONLY a JSON object of this exact shape, no other text:
+Respond with ONLY a JSON object of this exact shape, no other text (themes can include up to 5 entries):
 {{
   "relevant": true or false,
   "confidence": a number between 0.0 and 1.0,
-  "reason": "one or two sentence justification",
-  "themes": ["short theme", "short theme"]
+  "reason": "one or two sentence justification for each inclusion/exclusion decision",
+  "themes": ["short theme", "short theme", "etc."]
 }}
 """
 
@@ -47,7 +47,9 @@ def load_criteria(criteria_path: str) -> dict:
 
 
 def build_prompt(paper: dict, criteria: dict) -> str:
-    bullet = lambda items: "\n".join(f"- {item}" for item in items) or "(none specified)"
+    bullet = (
+        lambda items: "\n".join(f"- {item}" for item in items) or "(none specified)"
+    )
     return PROMPT_TEMPLATE.format(
         topic=(criteria.get("topic") or "").strip(),
         inclusion=bullet(criteria.get("inclusion_criteria") or []),
@@ -69,22 +71,32 @@ def screen_all(
     rescreen: bool = False,
     on_progress=None,
 ) -> tuple[int, int]:
-    """Screen unscreened (or all, if rescreen=True) papers. Returns (done, failed)."""
+    """Screen unscreened (or all, if rescreen=True) papers against the given criteria file.
+
+    Results are tracked per (paper, criteria_file), so screening with a different
+    criteria file never overwrites or deletes results recorded under another one.
+    Rescreening only updates rows already recorded under this criteria_file.
+    """
     criteria = load_criteria(criteria_path)
     conn = db.connect(db_path)
 
     if rescreen:
-        query = "SELECT * FROM papers"
+        query = """
+            SELECT p.* FROM papers p
+            JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
+        """
+        params: tuple = (criteria_path,)
     else:
         query = """
             SELECT p.* FROM papers p
-            LEFT JOIN screening_results s ON s.paper_id = p.id
+            LEFT JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
             WHERE s.paper_id IS NULL OR s.error IS NOT NULL
         """
+        params = (criteria_path,)
     if limit:
         query += f" LIMIT {int(limit)}"
 
-    rows = conn.execute(query).fetchall()
+    rows = conn.execute(query, params).fetchall()
     done = 0
     failed = 0
 
@@ -101,7 +113,9 @@ def screen_all(
 
         def _call():
             try:
-                outcome["result"] = generate_json(prompt, model=model, base_url=base_url, session=session)
+                outcome["result"] = generate_json(
+                    prompt, model=model, base_url=base_url, session=session
+                )
             except OllamaError as exc:
                 outcome["error"] = exc
             except requests.exceptions.RequestException:
@@ -126,14 +140,14 @@ def screen_all(
             conn.execute(
                 """
                 INSERT INTO screening_results
-                    (paper_id, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
-                VALUES (?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)
-                ON CONFLICT(paper_id) DO UPDATE SET
+                    (paper_id, criteria_file, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
+                VALUES (?, ?, NULL, NULL, NULL, NULL, ?, NULL, ?, ?)
+                ON CONFLICT(paper_id, criteria_file) DO UPDATE SET
                     error=excluded.error,
                     model=excluded.model,
                     screened_at=excluded.screened_at
                 """,
-                (paper["id"], model, str(exc), now),
+                (paper["id"], criteria_path, model, str(exc), now),
             )
             failed += 1
         else:
@@ -141,9 +155,9 @@ def screen_all(
             conn.execute(
                 """
                 INSERT INTO screening_results
-                    (paper_id, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT(paper_id) DO UPDATE SET
+                    (paper_id, criteria_file, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                ON CONFLICT(paper_id, criteria_file) DO UPDATE SET
                     relevant=excluded.relevant,
                     confidence=excluded.confidence,
                     reason=excluded.reason,
@@ -155,6 +169,7 @@ def screen_all(
                 """,
                 (
                     paper["id"],
+                    criteria_path,
                     1 if result.get("relevant") else 0,
                     result.get("confidence"),
                     result.get("reason"),
