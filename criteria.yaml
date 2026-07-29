@@ -1,0 +1,21 @@
+# Screening criteria used to prompt the local LLM.
+# Edit this file per review project -- no code changes needed.
+
+topic: >
+  Describe the research topic / review question here, e.g.
+  "Adoption of Industry 4.0 technologies and their effect on worker
+  knowledge sharing in manufacturing settings."
+
+inclusion_criteria:
+  - Empirical or theoretical study directly addressing the topic above
+  - Published in a peer-reviewed journal or conference proceedings
+  - Written in English
+
+exclusion_criteria:
+  - Off-topic / only tangentially related
+  - Editorials, book reviews, or non-peer-reviewed opinion pieces
+  - Duplicate or superseded by a later version of the same study
+
+notes: >
+  When in doubt, prefer including a paper with lower confidence over
+  silently excluding it -- borderline cases will be reviewed manually.
