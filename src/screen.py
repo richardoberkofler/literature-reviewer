@@ -31,12 +31,15 @@ Author Keywords: {author_keywords}
 Index Keywords: {index_keywords}
 Abstract: {abstract}
 
-Respond with ONLY a JSON object of this exact shape, no other text (themes can include up to 5 entries):
+Respond with ONLY a JSON object of this exact shape, no other text (themes can include up to 5 entries/keywords):
 {{
   "relevant": true or false,
   "confidence": a number between 0.0 and 1.0,
-  "reason": "one or two sentence justification for each inclusion/exclusion decision",
-  "themes": ["short theme", "short theme", "etc."]
+  "reason": "short and concise justification for each inclusion/exclusion decision",
+  "themes": ["short theme", "short theme", "etc."],
+  "peer_reviewed": true or false,
+  "language": "English" or "Non-English",
+  "study_type": "short description of the study type"
 }}
 """
 
@@ -155,13 +158,17 @@ def screen_all(
             conn.execute(
                 """
                 INSERT INTO screening_results
-                    (paper_id, criteria_file, relevant, confidence, reason, themes, model, raw_response, error, screened_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
+                    (paper_id, criteria_file, relevant, confidence, reason, themes,
+                     peer_reviewed, language, study_type, model, raw_response, error, screened_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)
                 ON CONFLICT(paper_id, criteria_file) DO UPDATE SET
                     relevant=excluded.relevant,
                     confidence=excluded.confidence,
                     reason=excluded.reason,
                     themes=excluded.themes,
+                    peer_reviewed=excluded.peer_reviewed,
+                    language=excluded.language,
+                    study_type=excluded.study_type,
                     model=excluded.model,
                     raw_response=excluded.raw_response,
                     error=NULL,
@@ -174,6 +181,9 @@ def screen_all(
                     result.get("confidence"),
                     result.get("reason"),
                     json.dumps(result.get("themes") or []),
+                    1 if result.get("peer_reviewed") else 0,
+                    result.get("language"),
+                    result.get("study_type"),
                     model,
                     json.dumps(result),
                     now,

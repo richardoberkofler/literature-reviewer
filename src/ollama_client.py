@@ -13,7 +13,7 @@ def generate_json(
     prompt: str,
     model: str,
     base_url: str = "http://localhost:11434",
-    timeout: int = 120,
+    timeout: int = 240,
     session: requests.Session | None = None,
 ) -> dict:
     """Send a prompt to Ollama and parse the response as JSON.
@@ -35,6 +35,7 @@ def generate_json(
                 "prompt": prompt,
                 "format": "json",
                 "stream": False,
+                "think": False,
             },
             timeout=timeout,
         )

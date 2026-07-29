@@ -6,15 +6,18 @@ import db
 
 COLUMNS = [
     "id", "title", "year", "source_title", "authors", "doi",
-    "relevant", "confidence", "reason", "themes", "error",
+    "relevant", "confidence", "reason", "themes",
+    "peer_reviewed", "language", "study_type", "error",
     "abstract", "author_keywords", "index_keywords",
+    "source", "source_file",
 ]
 
 
 def export_csv(db_path: str, out_path: str, criteria_path: str, relevant_only: bool = False) -> int:
     conn = db.connect(db_path)
     query = """
-        SELECT p.*, s.relevant, s.confidence, s.reason, s.themes, s.error
+        SELECT p.*, s.relevant, s.confidence, s.reason, s.themes,
+               s.peer_reviewed, s.language, s.study_type, s.error
         FROM papers p
         LEFT JOIN screening_results s ON s.paper_id = p.id AND s.criteria_file = ?
     """

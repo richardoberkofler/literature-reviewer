@@ -1,7 +1,8 @@
 """Command-line entry point for the literature review pipeline.
 
 Usage:
-    python src/cli.py ingest <csv_path> [--db data/review.db]
+    python src/cli.py ingest <path> [--db data/review.db]
+                              (accepts a Scopus .csv or Web of Science .xls/.xlsx export)
     python src/cli.py screen [--db data/review.db] [--criteria criteria.yaml]
                               [--model qwen2.5:14b] [--base-url http://localhost:11434]
                               [--limit N] [--rescreen]
@@ -22,7 +23,7 @@ DEFAULT_DB = "data/review.db"
 
 
 def cmd_ingest(args):
-    inserted, skipped = ingest_mod.ingest_csv(args.csv_path, args.db)
+    inserted, skipped = ingest_mod.ingest(args.file_path, args.db)
     print(f"Ingested {inserted} papers into {args.db} ({skipped} rows skipped: no id).")
 
 
@@ -83,8 +84,8 @@ def main():
     parser = argparse.ArgumentParser(description="Local-LLM assisted literature review screening")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_ingest = sub.add_parser("ingest", help="Load a Scopus CSV export into the database")
-    p_ingest.add_argument("csv_path")
+    p_ingest = sub.add_parser("ingest", help="Load a Scopus CSV or Web of Science Excel export into the database")
+    p_ingest.add_argument("file_path")
     p_ingest.add_argument("--db", default=DEFAULT_DB)
     p_ingest.set_defaults(func=cmd_ingest)
 
